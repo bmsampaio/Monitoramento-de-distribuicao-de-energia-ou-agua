@@ -70,7 +70,7 @@ O `openpyxl` será utilizado somente para ler a planilha. Ele não implementará
 | Integrante | Nome | Responsabilidade principal |
 |---|---|---|
 | 1 | Bárbara | Modelos, estrutura da rede e leitura dos dados |
-| 2 | A preencher | BFS e identificação de pontes |
+| 2 | Thiago | BFS e identificação de pontes |
 | 3 | A preencher | Dijkstra e avaliação de desempenho |
 | 4 | A preencher | Interface e visualização |
 | 5 | A preencher | Simulação de falhas e integração 
