@@ -73,7 +73,7 @@ O `openpyxl` será utilizado somente para ler a planilha. Ele não implementará
 | 2 | Thiago | BFS e identificação de pontes |
 | 3 | Felipe | Dijkstra e avaliação de desempenho |
 | 4 | A preencher | Interface e visualização |
-| 5 | A preencher | Simulação de falhas e integração 
+| 5 | João Victor dos Santos Nogueira | Simulação de falhas e integração 
 
 > **Observação:** Apesar da divisão de responsabilidades, este é um trabalho em grupo. Todos devem se ajudar, participar das revisões e colaborar na integração. Cada integrante precisa compreender o projeto completo, e não apenas sua parte, para explicar as decisões do grupo e participar das apresentações com segurança.
 
