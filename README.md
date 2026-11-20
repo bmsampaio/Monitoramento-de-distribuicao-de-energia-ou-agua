@@ -40,7 +40,7 @@ Todos participam dos testes, da documentação e das apresentações.
 
 ## Organização do projeto
 
-| Local | Conteúdo |
+| Caminho | Conteúdo |
 |---|---|
 | `modelos/` | Classes `No`, `Tubulacao` e `Rede` |
 | `algoritmos/` | BFS, Dijkstra e identificação de pontes |
