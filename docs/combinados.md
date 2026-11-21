@@ -8,7 +8,7 @@ Valem para as duas funções:
 
 - Consideram só tubulações ativas.
 - Não alteram a rede recebida. Para simular uma falha, desativar a tubulação em `rede.copiar()` e passar a cópia.
-- Os exemplos usam a rede de exemplo de `testes/auxiliares.py`, com IDs na ordem do README: `T01` = R-A, `T02` = A-B, ..., `T08` = D-F, `T09` = E-F, `T10` = F-G.
+- Os exemplos usam a rede de `exemplos/rede_exemplo.py` (`criar_rede_exemplo()`), com IDs na ordem do README: `T01` = R-A, `T02` = A-B, ..., `T08` = D-F, `T09` = E-F, `T10` = F-G.
 
 ### `bfs(rede, origem)`
 
@@ -82,6 +82,59 @@ Se algum destes itens mudar, as funções precisam ser ajustadas.
 | `rede.vizinhos_ativos(id)` | lista de pares `(vizinho, distancia)` | as duas |
 | `rede.adjacencia[u][v]` | ID da tubulação entre `u` e `v` | `encontrar_pontes` |
 
-### Pendente: lista ou conjunto
+### Lista ou conjunto
 
-O README do `main` propõe que as duas funções devolvam um conjunto. O código devolve lista, para manter a ordem de visita da BFS e um resultado previsível nas pontes. Quem precisar de operações de conjunto converte com `set(...)`. A confirmar com o grupo.
+As duas funções devolvem lista, para manter a ordem de visita da BFS e um resultado previsível nas pontes. Quem precisar de operações de conjunto converte com `set(...)`, como faz a simulação.
+
+## Leitura dos dados (integrante 1 - Bárbara)
+
+Arquivo `servicos/leitura_csv.py`. Importação: `from servicos.leitura_csv import carregar_rede`.
+
+| | |
+|---|---|
+| Recebe | caminhos de `nos.csv` e `tubulacoes.csv` (`str` ou `Path`) |
+| Devolve | `Rede` nova |
+| Erro | `ValueError` com arquivo e linha: coluna faltando, campo vazio, distância não numérica ou <= 0, `ativa` diferente de `true`/`false`, ponto inexistente, ID ou conexão repetidos |
+
+A rede de exemplo do plano fica em `exemplos/rede_exemplo.py`: `criar_rede_exemplo()` devolve uma `Rede` nova a cada chamada, e `POSICOES` guarda as posições fixas do desenho.
+
+## Dijkstra (integrante 3 - Felipe)
+
+Arquivo `algoritmos/dijkstra.py`. Importação: `from algoritmos.dijkstra import dijkstra`.
+
+| | |
+|---|---|
+| Recebe | `rede`, `origem` e `destino` (IDs) |
+| Devolve | `(caminho, distancia)`: `list[str]` da origem ao destino e distância em km |
+| Sem caminho | `([], None)` |
+| Origem = destino | `([origem], 0)` |
+| Erro | `ValueError` se origem ou destino não existem |
+| Complexidade | O((V + E) log V) |
+
+Com duas rotas de mesma distância, devolve uma delas. Sem B-D, as duas respostas certas são R-A-B-E-F-G e R-A-C-E-F-G, ambas com 14 km.
+
+## Simulação (integrante 5 - João Victor)
+
+Arquivo `servicos/simulacao.py`. Importação: `from servicos.simulacao import simular_falha, simular_falhas`.
+
+`simular_falhas(rede, origem, destino, tubulacoes_ids)` desativa **todas** as tubulações da lista em `rede.copiar()`, ao mesmo tempo, e devolve um `dict`. IDs repetidos contam uma vez. Com a lista vazia, não aplica falha e o "depois" repete o "antes" (usado pelo botão Restaurar). É a função usada pela interface.
+
+`simular_falha(rede, origem, destino, tubulacao_id)` é o atalho para uma tubulação só (`None` = sem falha). Devolve o mesmo `dict`, mais a chave `tubulacao_interrompida`.
+
+```python
+simular_falhas(rede, "R", "G", ["T08", "T09"])["inacessiveis_apos_falha"]  # ['F', 'G']
+simular_falha(rede, "R", "G", "T04")["distancia_depois"]                    # 14
+```
+
+| Chave | Conteúdo |
+|---|---|
+| `tubulacoes_interrompidas` | IDs desativados, sem repetição, na ordem recebida |
+| `antes`, `depois` | `dict` com `alcancaveis`, `caminho`, `distancia` e `pontes` de cada cenário |
+| `caminho_antes`, `caminho_depois` | `list[str]` ou `None` sem caminho |
+| `distancia_antes`, `distancia_depois` | km ou `None` sem caminho |
+| `pontes_antes`, `pontes_depois` | IDs das pontes |
+| `inacessiveis_apos_falha` | pontos que perderam a ligação com a origem, na ordem da BFS |
+| `novas_pontes`, `pontes_nao_sao_mais` | diferença entre as pontes dos dois cenários |
+| `falha_aplicada` | `True` se alguma tubulação foi desativada |
+
+Origem, destino ou tubulação inexistentes lançam `ValueError`. Passar um texto em vez de lista para `simular_falhas` lança `TypeError`.

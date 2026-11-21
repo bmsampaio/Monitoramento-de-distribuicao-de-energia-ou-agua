@@ -1,104 +1,139 @@
+"""Testes da estrutura da rede: modelos No, Tubulacao e Rede.
+
+Rodar na raiz: python -m unittest testes.test_rede -v
+"""
+
+import unittest
+
 from modelos.no import No
 from modelos.rede import Rede
 from modelos.tubulacao import Tubulacao
-from servicos.leitura_csv import carregar_nos, carregar_tubulacoes, carregar_rede
 
-rede = Rede()
-rede.adicionar_no(No("R", "Reservatório", "reservatorio"))
 
-assert "R" in rede.vertices
-assert rede.adjacencia["R"] == {}
+def rede_r1():
+    """Rede com o reservatório R, o ponto 1 e a tubulação T1 (R-1, 2.54 km)."""
+    rede = Rede()
+    rede.adicionar_no(No("R", "Reservatório", "reservatorio"))
+    rede.adicionar_no(No("1", "Ponto de demanda 1", "ponto_demanda"))
+    rede.adicionar_tubulacao(Tubulacao("T1", "R", "1", 2.54))
+    return rede
 
-print("Teste de cadastro do reservatório passou!")
 
-rede.adicionar_no(No("1", "Ponto de demanda 1", "ponto_demanda"))
-rede.adicionar_tubulacao(Tubulacao("T1", "R", "1", 2.54))
+class TestCadastro(unittest.TestCase):
+    def test_cadastro_do_reservatorio(self):
+        rede = Rede()
+        rede.adicionar_no(No("R", "Reservatório", "reservatorio"))
+        self.assertIn("R", rede.vertices)
+        self.assertEqual(rede.adjacencia["R"], {})
 
-assert rede.adjacencia["R"]["1"] == "T1"
-assert rede.adjacencia["1"]["R"] == "T1"
-assert len(rede.tubulacoes) == 1
+    def test_conexao_nos_dois_sentidos(self):
+        rede = rede_r1()
+        self.assertEqual(rede.adjacencia["R"]["1"], "T1")
+        self.assertEqual(rede.adjacencia["1"]["R"], "T1")
+        self.assertEqual(len(rede.tubulacoes), 1)
+        self.assertEqual(rede.vizinhos_ativos("R"), [("1", 2.54)])
+        self.assertEqual(rede.vizinhos_ativos("1"), [("R", 2.54)])
 
-print("Teste de conexão nos dois sentidos passou!")
+    def test_rejeita_no_duplicado(self):
+        rede = rede_r1()
+        with self.assertRaises(ValueError):
+            rede.adicionar_no(No("R", "Outro", "reservatorio"))
 
-assert rede.vizinhos_ativos("R") == [("1", 2.54)]
+    def test_rejeita_tubulacao_com_id_duplicado(self):
+        rede = rede_r1()
+        rede.adicionar_no(No("2", "Ponto 2", "ponto_demanda"))
+        with self.assertRaises(ValueError):
+            rede.adicionar_tubulacao(Tubulacao("T1", "1", "2", 1.0))
 
-rede.alterar_estado("T1", False)
+    def test_rejeita_destino_inexistente(self):
+        rede = Rede()
+        rede.adicionar_no(No("R", "Reservatório", "reservatorio"))
+        with self.assertRaises(ValueError) as contexto:
+            rede.adicionar_tubulacao(Tubulacao("T1", "R", "X", 2.54))
+        self.assertEqual(str(contexto.exception), "O nó de destino não existe.")
+        self.assertEqual(rede.tubulacoes, {})
+        self.assertEqual(rede.adjacencia["R"], {})
 
-assert "T1" in rede.tubulacoes
-assert rede.vizinhos_ativos("R") == []
-assert rede.vizinhos_ativos("1") == []
+    def test_rejeita_origem_inexistente(self):
+        rede = Rede()
+        rede.adicionar_no(No("R", "Reservatório", "reservatorio"))
+        with self.assertRaises(ValueError):
+            rede.adicionar_tubulacao(Tubulacao("T1", "X", "R", 2.54))
 
-print("Teste de desativação da tubulação passou!")
+    def test_rejeita_laco(self):
+        rede = Rede()
+        rede.adicionar_no(No("R", "Reservatório", "reservatorio"))
+        with self.assertRaises(ValueError):
+            rede.adicionar_tubulacao(Tubulacao("T1", "R", "R", 1.0))
 
-rede.alterar_estado("T1", True)
+    def test_rejeita_distancia_zero_ou_negativa(self):
+        for distancia in (0, -2.0):
+            with self.subTest(distancia=distancia):
+                rede = Rede()
+                rede.adicionar_no(No("R", "Reservatório", "reservatorio"))
+                rede.adicionar_no(No("1", "Ponto 1", "ponto_demanda"))
+                with self.assertRaises(ValueError):
+                    rede.adicionar_tubulacao(Tubulacao("T1", "R", "1", distancia))
 
-assert rede.vizinhos_ativos("R") == [("1", 2.54)]
-assert rede.vizinhos_ativos("1") == [("R", 2.54)]
-assert len(rede.tubulacoes) == 1
+    def test_rejeita_conexao_duplicada_invertida(self):
+        rede = rede_r1()
+        with self.assertRaises(ValueError) as contexto:
+            rede.adicionar_tubulacao(Tubulacao("T2", "1", "R", 2.54))
+        self.assertEqual(
+            str(contexto.exception), "Já existe uma tubulação entre esses nós."
+        )
+        self.assertEqual(len(rede.tubulacoes), 1)
+        self.assertEqual(rede.adjacencia["R"]["1"], "T1")
+        self.assertEqual(rede.adjacencia["1"]["R"], "T1")
 
-print("Teste de reativação da tubulação passou!")
 
-rede_com_falha = rede.copiar()
-rede_com_falha.alterar_estado("T1", False)
+class TestEstado(unittest.TestCase):
+    def test_desativar_e_reativar(self):
+        rede = rede_r1()
+        rede.alterar_estado("T1", False)
+        self.assertIn("T1", rede.tubulacoes)
+        self.assertEqual(rede.vizinhos_ativos("R"), [])
+        self.assertEqual(rede.vizinhos_ativos("1"), [])
 
-assert rede_com_falha.vizinhos_ativos("R") == []
-assert rede.vizinhos_ativos("R") == [("1", 2.54)]
+        rede.alterar_estado("T1", True)
+        self.assertEqual(rede.vizinhos_ativos("R"), [("1", 2.54)])
+        self.assertEqual(rede.vizinhos_ativos("1"), [("R", 2.54)])
 
-print("Teste de independência da cópia passou!")
+    def test_vizinhos_de_no_inexistente(self):
+        with self.assertRaises(ValueError):
+            rede_r1().vizinhos_ativos("X")
 
-rede_r9 = Rede()
-carregar_nos(rede_r9, "dados/nos.csv")
+    def test_alterar_tubulacao_inexistente(self):
+        with self.assertRaises(ValueError):
+            rede_r1().alterar_estado("T9", False)
 
-assert len(rede_r9.vertices) == 62
-assert rede_r9.vertices["R"].nome == "Reservatório"
-assert rede_r9.adjacencia["R"] == {}
 
-print("Teste de leitura dos nós da R-9 passou!")
+class TestCopia(unittest.TestCase):
+    def test_copia_independente(self):
+        rede = rede_r1()
+        copia = rede.copiar()
+        copia.alterar_estado("T1", False)
+        self.assertEqual(copia.vizinhos_ativos("R"), [])
+        self.assertEqual(rede.vizinhos_ativos("R"), [("1", 2.54)])
 
-carregar_tubulacoes(rede_r9, "dados/tubulacoes.csv")
+    def test_copia_tem_objetos_novos(self):
+        rede = rede_r1()
+        copia = rede.copiar()
+        self.assertEqual(set(copia.vertices), set(rede.vertices))
+        self.assertEqual(set(copia.tubulacoes), set(rede.tubulacoes))
+        self.assertIsNot(copia.vertices["R"], rede.vertices["R"])
+        self.assertIsNot(copia.tubulacoes["T1"], rede.tubulacoes["T1"])
 
-assert len(rede_r9.tubulacoes) == 72
-assert rede_r9.adjacencia["R"]["1"] == "T1"
-assert rede_r9.adjacencia["1"]["R"] == "T1"
-assert ("1", 2.54) in rede_r9.vizinhos_ativos("R")
+    def test_copia_preserva_estado_inativo(self):
+        rede = rede_r1()
+        rede.alterar_estado("T1", False)
+        self.assertFalse(rede.copiar().tubulacoes["T1"].ativa)
 
-print("Teste de leitura das tubulações da R-9 passou!")
+    def test_copia_de_rede_vazia(self):
+        copia = Rede().copiar()
+        self.assertEqual(copia.vertices, {})
+        self.assertEqual(copia.tubulacoes, {})
 
-rede_completa = carregar_rede("dados/nos.csv", "dados/tubulacoes.csv")
 
-assert len(rede_completa.vertices) == 62
-assert len(rede_completa.tubulacoes) == 72
-assert ("1", 2.54) in rede_completa.vizinhos_ativos("R")
-
-print("Teste de carregamento completo da R-9 passou!")
-
-rede_teste = Rede()
-rede_teste.adicionar_no(No("R", "Reservatório", "reservatorio"))
-
-try:
-    rede_teste.adicionar_tubulacao(Tubulacao("T1", "R", "X", 2.54))
-except ValueError as erro:
-    assert str(erro) == "O nó de destino não existe."
-else:
-    raise AssertionError("A rede aceitou uma tubulação com destino inexistente.")
-
-assert rede_teste.tubulacoes == {}
-assert rede_teste.adjacencia["R"] == {}
-
-print("Teste de rejeição de destino inexistente passou!")
-
-rede_teste.adicionar_no(No("1", "Ponto de demanda 1", "ponto_demanda"))
-rede_teste.adicionar_tubulacao(Tubulacao("T1", "R", "1", 2.54))
-
-try:
-    rede_teste.adicionar_tubulacao(Tubulacao("T2", "1", "R", 2.54))
-except ValueError as erro:
-    assert str(erro) == "Já existe uma tubulação entre esses nós."
-else:
-    raise AssertionError("A rede aceitou uma segunda tubulação entre os mesmos nós.")
-
-assert len(rede_teste.tubulacoes) == 1
-assert rede_teste.adjacencia["R"]["1"] == "T1"
-assert rede_teste.adjacencia["1"]["R"] == "T1"
-
-print("Teste de rejeição de conexão duplicada passou!")
+if __name__ == "__main__":
+    unittest.main()

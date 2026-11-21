@@ -5,70 +5,30 @@ Usa os modulos reais do grupo: Rede (modelos/), BFS, Dijkstra e pontes
 
 Rodar com:  python -m streamlit run app.py
 """
-import csv
 import re
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import streamlit as st
 
-from modelos.no import No
-from modelos.rede import Rede
-from modelos.tubulacao import Tubulacao
-from servicos.simulacao import simular_falha
-from visualizacao import calcular_layout, desenhar_rede
+from exemplos.rede_exemplo import POSICOES as POSICOES_EXEMPLO
+from exemplos.rede_exemplo import criar_rede_exemplo
+from servicos.leitura_csv import carregar_rede
+from servicos.simulacao import simular_falhas
+from visualizacao import (ALTURA_EXTRA, calcular_layout, desenhar_rede,
+                          figura_para_svg, html_com_zoom)
 
 PASTA_DADOS = Path(__file__).resolve().parent / "dados"
+ALTURA_DESENHO = 560  # pixels de cada desenho na tela
 
 
 # ---------- Carregamento da rede ----------
-def carregar_rede_csv():
-    """Le dados/nos.csv e dados/tubulacoes.csv e monta a Rede.
-
-    PROVISORIO: serve ate o servicos/leitura_csv.py (pessoa 1) ficar pronto.
-    Quando ele existir, troque o corpo desta funcao pela chamada dele.
-    """
-    rede = Rede()
-    with open(PASTA_DADOS / "nos.csv", encoding="utf-8", newline="") as arq:
-        for linha in csv.DictReader(arq):
-            rede.adicionar_no(No(linha["id"], linha["nome"], linha["tipo"]))
-    with open(PASTA_DADOS / "tubulacoes.csv", encoding="utf-8", newline="") as arq:
-        for linha in csv.DictReader(arq):
-            rede.adicionar_tubulacao(Tubulacao(
-                linha["id"], linha["origem"], linha["destino"],
-                float(linha["distancia_km"]), linha["ativa"].strip().lower() == "true",
-            ))
-    return rede
-
-
-POSICOES_EXEMPLO = {
-    "R": (0.0, 0.5), "A": (0.18, 0.5), "B": (0.4, 0.9), "C": (0.4, 0.1),
-    "D": (0.62, 0.9), "E": (0.62, 0.1), "F": (0.82, 0.5), "G": (1.0, 0.5),
-}
-TUBOS_EXEMPLO = [
-    ("T01", "R", "A", 2), ("T02", "A", "B", 2), ("T03", "A", "C", 3),
-    ("T04", "B", "D", 2), ("T05", "B", "E", 5), ("T06", "C", "D", 6),
-    ("T07", "C", "E", 4), ("T08", "D", "F", 2), ("T09", "E", "F", 3),
-    ("T10", "F", "G", 2),
-]
-
-
-def montar_rede_exemplo():
-    """Rede de 8 pontos e 10 tubulacoes da pagina 6 do plano (para os testes)."""
-    rede = Rede()
-    for id_ in POSICOES_EXEMPLO:
-        rede.adicionar_no(No(id_, f"Ponto {id_}", "reservatorio" if id_ == "R" else "ponto_demanda"))
-    for id_, o, d, km in TUBOS_EXEMPLO:
-        rede.adicionar_tubulacao(Tubulacao(id_, o, d, km))
-    return rede
-
-
 @st.cache_resource
 def obter_rede(nome):
     """Carrega a rede e o layout uma vez so (a rede original nunca e alterada)."""
     if nome == "Exemplo do plano (8 pontos)":
-        return montar_rede_exemplo(), POSICOES_EXEMPLO
-    rede = carregar_rede_csv()
+        return criar_rede_exemplo(), POSICOES_EXEMPLO
+    rede = carregar_rede(PASTA_DADOS / "nos.csv", PASTA_DADOS / "tubulacoes.csv")
     return rede, calcular_layout(rede)
 
 
@@ -85,48 +45,83 @@ def rotulo_tubulacao(rede, id_):
     return f"{id_}: {t.origem}–{t.destino} ({t.distancia:g} km)"
 
 
+def mostrar_html(pagina, altura):
+    """Exibe uma pagina HTML com JavaScript (o desenho com zoom).
+
+    st.iframe substitui st.components.v1.html nas versoes novas do Streamlit;
+    o components.html fica so para versoes antigas, que nao tem st.iframe.
+    """
+    if hasattr(st, "iframe"):
+        st.iframe(pagina, height=altura)
+    else:
+        import streamlit.components.v1 as components
+        components.html(pagina, height=altura)
+
+
 def descrever_tubulacoes(rede, ids):
     return ", ".join(f"{i} ({rede.tubulacoes[i].origem}–{rede.tubulacoes[i].destino})" for i in ids) or "nenhuma"
+
+
+# ---------- Estado das falhas ----------
+# "falhas" guarda as tubulacoes aplicadas; "selecao_falhas" e o valor do
+# multiselect. Limpar o multiselect so e permitido antes de ele ser desenhado,
+# por isso os botoes usam callbacks (on_click rodam antes do script).
+def aplicar_falhas():
+    st.session_state.falhas = list(st.session_state.selecao_falhas)
+
+
+def limpar_falhas():
+    st.session_state.falhas = []
+    st.session_state.selecao_falhas = []
 
 
 # ---------- Tela ----------
 st.set_page_config(page_title="Rede de água", layout="wide")
 st.title("Monitoramento de distribuição de água")
-st.caption("Compara a rede antes e depois da interrupção de uma tubulação. "
+st.caption("Compara a rede antes e depois da interrupção de uma ou mais tubulações. "
            "Analisa conexões e distâncias; não calcula pressão nem vazão.")
 
 with st.sidebar:
     st.header("Controles")
     nome_rede = st.selectbox("Rede", ["R-9 (62 pontos)", "Exemplo do plano (8 pontos)"])
-    rede, posicoes = obter_rede(nome_rede)
+    try:
+        rede, posicoes = obter_rede(nome_rede)
+    except (OSError, ValueError) as erro:
+        st.error(f"Não foi possível carregar a rede: {erro}")
+        st.stop()
     if st.session_state.get("rede_atual") != nome_rede:
         st.session_state.rede_atual = nome_rede
-        st.session_state.falha_id = None  # trocar de rede limpa a falha
+        limpar_falhas()  # trocar de rede limpa as falhas e a selecao
 
     pontos = ordenar_ids(rede.vertices)
     origem = st.selectbox("Origem", pontos, index=0)
     destino = st.selectbox("Destino", pontos, index=len(pontos) - 1)
     tubos = ordenar_ids(rede.tubulacoes)
-    escolhida = st.selectbox("Tubulação a interromper", tubos,
-                             format_func=lambda i: rotulo_tubulacao(rede, i))
-    if st.button("Simular falha", type="primary", use_container_width=True):
-        st.session_state.falha_id = escolhida
-    if st.button("Restaurar rede", use_container_width=True):
-        st.session_state.falha_id = None
+    st.multiselect("Tubulações a interromper", tubos, key="selecao_falhas",
+                   format_func=lambda i: rotulo_tubulacao(rede, i),
+                   placeholder="Escolha uma ou mais")
+    st.button("Simular falhas", type="primary", use_container_width=True,
+              on_click=aplicar_falhas, disabled=not st.session_state.selecao_falhas)
+    st.button("Restaurar rede", use_container_width=True, on_click=limpar_falhas)
+    if st.session_state.selecao_falhas != st.session_state.get("falhas", []):
+        st.caption("A seleção mudou. Clique em **Simular falhas** para aplicar.")
     rotulos = st.checkbox("Mostrar IDs dos pontos", value=True)
 
-falha_id = st.session_state.get("falha_id")
+falhas = st.session_state.get("falhas", [])
 
 try:
-    r = simular_falha(rede, origem, destino, falha_id)
+    r = simular_falhas(rede, origem, destino, falhas)
 except ValueError as erro:
     st.error(f"Não foi possível simular: {erro}")
     st.stop()
 
-if falha_id:
-    st.error(f"Tubulação interrompida: {rotulo_tubulacao(rede, falha_id)}")
+if falhas:
+    titulo_falhas = ("Tubulação interrompida" if len(falhas) == 1
+                     else f"{len(falhas)} tubulações interrompidas")
+    st.error(f"{titulo_falhas}: " + "; ".join(rotulo_tubulacao(rede, i) for i in falhas))
 else:
-    st.success("Rede original, sem falhas. Escolha uma tubulação e clique em **Simular falha**.")
+    st.success("Rede original, sem falhas. Escolha uma ou mais tubulações e clique em "
+               "**Simular falhas**.")
 
 # --- Comparação antes/depois ---
 antes_d, depois_d = r["distancia_antes"], r["distancia_depois"]
@@ -139,35 +134,43 @@ with c1:
 with c2:
     if depois_d is None:
         st.metric("Distância depois", "sem caminho")
-    elif antes_d is None or not falha_id:
+    elif antes_d is None or not falhas:
         st.metric("Distância depois", f"{depois_d:.2f} km")
     else:
         st.metric("Distância depois", f"{depois_d:.2f} km", delta=f"{depois_d - antes_d:+.2f} km",
                   delta_color="inverse")
 with c3:
-    st.metric("Pontos inacessíveis por causa da falha", len(r["inacessiveis_apos_falha"]))
+    st.metric("Pontos inacessíveis por causa das falhas", len(r["inacessiveis_apos_falha"]))
 
 if r["caminho_antes"] is None:
     st.warning(f"Sem caminho entre {origem} e {destino} na rede original.")
-elif falha_id and r["caminho_depois"] is None:
-    st.warning(f"Sem caminho entre {origem} e {destino} depois da falha: "
+elif falhas and r["caminho_depois"] is None:
+    st.warning(f"Sem caminho entre {origem} e {destino} depois das falhas: "
                f"{destino} ficou isolado de {origem}.")
 
-# --- Desenhos lado a lado ---
-col_antes, col_depois = st.columns(2)
-with col_antes:
-    fig = desenhar_rede(rede, posicoes, origem, destino, caminho=r["caminho_antes"],
-                        pontes=r["pontes_antes"], titulo="Antes da falha", rotulos=rotulos)
-    st.pyplot(fig)
+# --- Desenhos lado a lado, com zoom ---
+if not falhas:
+    titulo_depois = "Sem falha (igual ao antes)"
+elif len(falhas) == 1:
+    titulo_depois = "Depois da falha"
+else:
+    titulo_depois = f"Depois das {len(falhas)} falhas"
+
+# Titulos e legenda ficam no HTML, fora do desenho, para nao sumirem no zoom.
+figuras = [
+    desenhar_rede(rede, posicoes, origem, destino, caminho=r["caminho_antes"],
+                  pontes=r["pontes_antes"], rotulos=rotulos, legenda=False),
+    desenhar_rede(rede, posicoes, origem, destino, caminho=r["caminho_depois"],
+                  pontes=r["pontes_depois"] or [], falhas=falhas,
+                  inacessiveis=r["inacessiveis_apos_falha"], rotulos=rotulos, legenda=False),
+]
+svgs = [figura_para_svg(fig) for fig in figuras]
+for fig in figuras:
     plt.close(fig)
-with col_depois:
-    fig = desenhar_rede(rede, posicoes, origem, destino, caminho=r["caminho_depois"],
-                        pontes=r["pontes_depois"] or [], falha_id=falha_id,
-                        inacessiveis=r["inacessiveis_apos_falha"],
-                        titulo="Depois da falha" if falha_id else "Sem falha (igual ao antes)",
-                        rotulos=rotulos)
-    st.pyplot(fig)
-    plt.close(fig)
+mostrar_html(
+    html_com_zoom(svgs, ["Antes das falhas", titulo_depois], ALTURA_DESENHO, chave=nome_rede),
+    ALTURA_DESENHO + ALTURA_EXTRA,
+)
 
 # --- Detalhes ---
 st.subheader("Detalhes")
@@ -178,6 +181,7 @@ with d1:
 with d2:
     st.markdown("**Caminho depois:** " + (" → ".join(r["caminho_depois"]) if r["caminho_depois"] else "sem caminho"))
     st.markdown("**Pontes depois:** " + descrever_tubulacoes(rede, r["pontes_depois"] or []))
-    if falha_id:
-        st.markdown("**Pontos inacessíveis:** " + (", ".join(r["inacessiveis_apos_falha"]) or "nenhum"))
+    if falhas:
+        st.markdown("**Pontos inacessíveis:** "
+                    + (", ".join(ordenar_ids(r["inacessiveis_apos_falha"])) or "nenhum"))
         st.markdown("**Novas pontes:** " + descrever_tubulacoes(rede, r["novas_pontes"]))

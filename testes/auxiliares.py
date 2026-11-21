@@ -1,10 +1,10 @@
-"""Funções de apoio compartilhadas pelos testes de BFS e de pontes.
+"""Funções de apoio compartilhadas pelos testes.
 
-Os testes montam as próprias redes, sem depender de exemplos/rede_exemplo.py
-nem dos CSVs, que são mantidos por outras pessoas do grupo. Assim, uma
-mudança nesses arquivos não quebra os testes dos algoritmos.
+A rede de exemplo vem de exemplos/rede_exemplo.py, a mesma usada pela
+interface. As demais redes de teste são montadas aqui.
 """
 
+from exemplos.rede_exemplo import criar_rede_exemplo  # noqa: F401 (reexportada)
 from modelos.no import No
 from modelos.rede import Rede
 from modelos.tubulacao import Tubulacao
@@ -63,49 +63,6 @@ def rede_por_pares(texto):
         for indice, (origem, destino) in enumerate(pares, start=1)
     ]
     return montar_rede(pontos, tubulacoes)
-
-
-def criar_rede_exemplo():
-    """Monta a rede de exemplo do projeto: 8 pontos e 10 tubulações ativas.
-
-    É a rede descrita no README, seção 7 ("Dados e rede inicial"); em
-    versões mais novas do README ela está na seção 8 ("Rede pequena para
-    testes"). Os resultados esperados que os testes conferem também vêm do
-    README.
-
-    Os IDs seguem a ordem das conexões no README:
-
-        T01 R-A 2 km    T06 C-D 6 km
-        T02 A-B 2 km    T07 C-E 4 km
-        T03 A-C 3 km    T08 D-F 2 km
-        T04 B-D 2 km    T09 E-F 3 km
-        T05 B-E 5 km    T10 F-G 2 km
-
-    R só tem a tubulação R-A, e G só tem F-G. Entre A e F há vários
-    caminhos (por B ou por C, passando por D ou por E), que formam ciclos.
-
-    Returns:
-        Rede: rede nova a cada chamada, para que as falhas simuladas em um
-        teste não afetem os outros.
-    """
-    rede = Rede()
-    rede.adicionar_no(No("R", "Reservatório principal", "reservatorio"))
-    rede.adicionar_no(No("A", "Estação de bombeamento", "bombeamento"))
-    rede.adicionar_no(No("B", "Ponto intermediário B", "intermediario"))
-    rede.adicionar_no(No("C", "Ponto intermediário C", "intermediario"))
-    for setor in "DEFG":
-        rede.adicionar_no(No(setor, f"Setor {setor}", "setor"))
-
-    conexoes = [
-        ("R", "A", 2), ("A", "B", 2), ("A", "C", 3), ("B", "D", 2),
-        ("B", "E", 5), ("C", "D", 6), ("C", "E", 4), ("D", "F", 2),
-        ("E", "F", 3), ("F", "G", 2),
-    ]
-    for indice, (origem, destino, distancia) in enumerate(conexoes, start=1):
-        rede.adicionar_tubulacao(
-            Tubulacao(f"T{indice:02d}", origem, destino, distancia)
-        )
-    return rede
 
 
 def retrato_da_rede(rede):

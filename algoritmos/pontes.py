@@ -48,7 +48,7 @@ def encontrar_pontes(rede):
         Tempo O(V + E + P log P), espaço O(V + E).
 
     Exemplo:
-        Na rede de exemplo (testes/auxiliares.criar_rede_exemplo)::
+        Na rede de exemplo (exemplos/rede_exemplo.py)::
 
             encontrar_pontes(rede)   # ['T01', 'T10'] (R-A e F-G)
             copia = rede.copiar()

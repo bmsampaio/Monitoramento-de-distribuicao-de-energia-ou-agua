@@ -48,7 +48,7 @@ def bfs(rede, origem):
         Tempo O(V + E), espaço O(V).
 
     Exemplo:
-        Na rede de exemplo (testes/auxiliares.criar_rede_exemplo)::
+        Na rede de exemplo (exemplos/rede_exemplo.py)::
 
             bfs(rede, "R")   # ['R', 'A', 'B', 'C', 'D', 'E', 'F', 'G']
             copia = rede.copiar()

@@ -1,7 +1,7 @@
 """Lê resultados_desempenho_dijkstra.csv e gera PNG para o relatório.
 
-Execute após o benchmark: python gerar_grafico_desempenho.py
-Requer: python -m pip install matplotlib
+Execute após o benchmark, na raiz: python -m desempenho.gerar_grafico_desempenho
+Lê e grava nesta pasta. Requer matplotlib (requirements.txt).
 """
 import csv
 from pathlib import Path

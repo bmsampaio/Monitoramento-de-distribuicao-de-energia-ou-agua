@@ -1,7 +1,7 @@
 """Medições reproduzíveis do Dijkstra com a classe Rede da Pessoa 1.
 
-Execute: python testar_desempenho_dijkstra.py
-Gera resultados_desempenho_dijkstra.csv na mesma pasta.
+Execute na raiz do projeto: python -m desempenho.testar_desempenho_dijkstra
+Gera resultados_desempenho_dijkstra.csv nesta pasta, com o computador usado.
 Os tempos variam entre computadores; use o CSV gerado na SUA máquina no relatório.
 """
 import csv
@@ -15,9 +15,10 @@ from modelos.no import No
 from modelos.rede import Rede
 from modelos.tubulacao import Tubulacao
 from algoritmos.dijkstra import dijkstra
-from testar_integracao_r9 import carregar_rede_csv
+from servicos.leitura_csv import carregar_rede
 
 RAIZ = Path(__file__).resolve().parent
+PASTA_DADOS = RAIZ.parent / 'dados'
 TAMANHOS = (100, 500, 1000, 5000)
 REPETICOES = 30
 AQUECIMENTOS = 5
@@ -96,20 +97,26 @@ def medir(rede, origem, destino, repeticoes=REPETICOES):
 
 
 def executar():
-    print('Ambiente:', platform.platform())
-    print('Python:', platform.python_version())
+    # O plano pede o computador junto com os tempos, então ele vai no CSV.
+    ambiente = {
+        'sistema': platform.platform(),
+        'processador': platform.processor() or platform.machine(),
+        'python': platform.python_version(),
+    }
+    print('Ambiente:', ambiente['sistema'], '|', ambiente['processador'])
+    print('Python:', ambiente['python'])
     print('Semente:', SEMENTE, '| Repetições por rede:', REPETICOES)
     resultados = []
 
-    r9 = carregar_rede_csv()
-    resultados.append({'tipo': 'R9 (dados CSV)', **medir(r9, 'R', '20')})
+    r9 = carregar_rede(PASTA_DADOS / 'nos.csv', PASTA_DADOS / 'tubulacoes.csv')
+    resultados.append({'tipo': 'R9 (dados CSV)', **medir(r9, 'R', '20'), **ambiente})
 
     for n in TAMANHOS:
         rede = gerar_grafo_conexo(n, semente=SEMENTE + n)
-        resultados.append({'tipo': 'Sintético', **medir(rede, '0', str(n - 1))})
+        resultados.append({'tipo': 'Sintético', **medir(rede, '0', str(n - 1)), **ambiente})
 
     cols = ['tipo', 'vertices', 'arestas', 'repeticoes', 'mediana_ms', 'media_ms',
-            'minimo_ms', 'maximo_ms', 'distancia_km']
+            'minimo_ms', 'maximo_ms', 'distancia_km', 'sistema', 'processador', 'python']
     saida = RAIZ / 'resultados_desempenho_dijkstra.csv'
     with saida.open('w', encoding='utf-8-sig', newline='') as arq:
         writer = csv.DictWriter(arq, fieldnames=cols)
