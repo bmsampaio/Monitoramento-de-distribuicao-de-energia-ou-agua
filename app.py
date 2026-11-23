@@ -42,7 +42,7 @@ def ordenar_ids(ids):
 
 def rotulo_tubulacao(rede, id_):
     t = rede.tubulacoes[id_]
-    return f"{id_}: {t.origem}–{t.destino} ({t.distancia:g} km)"
+    return f"{id_}: {t.origem}-{t.destino} ({t.distancia:g} km)"
 
 
 def mostrar_html(pagina, altura):
@@ -59,7 +59,7 @@ def mostrar_html(pagina, altura):
 
 
 def descrever_tubulacoes(rede, ids):
-    return ", ".join(f"{i} ({rede.tubulacoes[i].origem}–{rede.tubulacoes[i].destino})" for i in ids) or "nenhuma"
+    return ", ".join(f"{i} ({rede.tubulacoes[i].origem}-{rede.tubulacoes[i].destino})" for i in ids) or "nenhuma"
 
 
 # ---------- Estado das falhas ----------
@@ -95,7 +95,8 @@ with st.sidebar:
 
     pontos = ordenar_ids(rede.vertices)
     origem = st.selectbox("Origem", pontos, index=0)
-    destino = st.selectbox("Destino", pontos, index=len(pontos) - 1)
+    destinos = [p for p in pontos if p != origem]
+    destino = st.selectbox("Destino", destinos, index=len(destinos) - 1)
     tubos = ordenar_ids(rede.tubulacoes)
     st.multiselect("Tubulações a interromper", tubos, key="selecao_falhas",
                    format_func=lambda i: rotulo_tubulacao(rede, i),

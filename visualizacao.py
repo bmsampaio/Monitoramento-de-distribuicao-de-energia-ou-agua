@@ -100,6 +100,42 @@ def calcular_layout(rede, semente=7, iteracoes=400):
     return {id_: (float(pos[i, 0]), float(pos[i, 1])) for id_, i in indice.items()}
 
 
+def _distancia_ao_segmento(p, a, b):
+    """Menor distancia do ponto p ao segmento a-b (tuplas x, y)."""
+    ab = (b[0] - a[0], b[1] - a[1])
+    tamanho2 = ab[0] ** 2 + ab[1] ** 2
+    t = 0.0 if tamanho2 == 0 else max(0.0, min(1.0, (
+        (p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / tamanho2))
+    return math.hypot(p[0] - (a[0] + t * ab[0]), p[1] - (a[1] + t * ab[1]))
+
+
+def _tracado_tubulacao(origem, destino, posicoes, folga=0.03):
+    """Pontos (x, y) do desenho de uma tubulacao.
+
+    Se a reta passa por cima de outro ponto (ex.: 5-27 atras do 34), o tubo
+    vira uma curva que contorna o ponto, para nao parecer que passa por ele.
+
+    Returns:
+        tuple[list[float], list[float]]: listas x e y (2 pontos se for reta).
+    """
+    a, b = posicoes[origem], posicoes[destino]
+    outros = [p for id_, p in posicoes.items() if id_ not in (origem, destino)]
+    if all(_distancia_ao_segmento(p, a, b) >= folga for p in outros):
+        return [a[0], b[0]], [a[1], b[1]]
+    comprimento = math.hypot(b[0] - a[0], b[1] - a[1]) or 1.0
+    normal = (-(b[1] - a[1]) / comprimento, (b[0] - a[0]) / comprimento)
+    meio = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+    for desvio in (0.09, -0.09, 0.16, -0.16, 0.24, -0.24):
+        c = (meio[0] + normal[0] * desvio, meio[1] + normal[1] * desvio)
+        ts = [i / 24 for i in range(25)]
+        curva = [((1 - t) ** 2 * a[0] + 2 * t * (1 - t) * c[0] + t * t * b[0],
+                  (1 - t) ** 2 * a[1] + 2 * t * (1 - t) * c[1] + t * t * b[1]) for t in ts]
+        if all(min(math.hypot(p[0] - q[0], p[1] - q[1]) for q in curva) >= folga
+               for p in outros):
+            return [q[0] for q in curva], [q[1] for q in curva]
+    return [a[0], b[0]], [a[1], b[1]]
+
+
 def desenhar_rede(rede, posicoes, origem, destino, caminho=None, pontes=(),
                   falhas=(), inacessiveis=(), titulo="", rotulos=True,
                   tamanho=(7.5, 6), legenda=True):
@@ -136,8 +172,10 @@ def desenhar_rede(rede, posicoes, origem, destino, caminho=None, pontes=(),
     # Em caminhos longos os rotulos de km se sobrepoem; os valores ficam nos detalhes.
     rotular_km = len(arestas_caminho) <= 6
     for t in rede.tubulacoes.values():
-        x = [posicoes[t.origem][0], posicoes[t.destino][0]]
-        y = [posicoes[t.origem][1], posicoes[t.destino][1]]
+        x, y = _tracado_tubulacao(t.origem, t.destino, posicoes)
+        meio = len(x) // 2
+        mx = sum(x) / 2 if len(x) == 2 else x[meio]
+        my = sum(y) / 2 if len(y) == 2 else y[meio]
         par = frozenset((t.origem, t.destino))
         falhou = t.identificador in falhas
         if falhou:
@@ -150,7 +188,7 @@ def desenhar_rede(rede, posicoes, origem, destino, caminho=None, pontes=(),
             estilo = dict(color=COR_NORMAL, linestyle="-", linewidth=1.2, zorder=1)
         ax.plot(x, y, gid=f"aresta-{t.identificador}", **estilo)
         if falhou or (par in arestas_caminho and rotular_km):
-            ax.text(sum(x) / 2, sum(y) / 2 + (0.03 if falhou else 0), f"{t.distancia:g} km", fontsize=7,
+            ax.text(mx, my + (0.03 if falhou else 0), f"{t.distancia:g} km", fontsize=7,
                     ha="center", va="center", zorder=4, gid=f"km-{t.identificador}",
                     bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.85))
 
